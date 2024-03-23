@@ -1,4 +1,4 @@
-import { Express } from "express";
+import express from "express";
 import cors from "cors"
 import cookieParser from "cookie-parser";
 
@@ -25,6 +25,10 @@ import userRouter from "./routes/user.routes.js"
 app.use("/api/v1/users", userRouter)
 
 
+// app.get("/", (req,res) => {
+//     res.send("<h1>hello world</h1>");
+// });
 
 
-export default app 
+
+export {app};
