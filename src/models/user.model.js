@@ -1,5 +1,5 @@
 import mongoose, {Schema} from "mongoose";
-import { Jwt } from "jsonwebtoken";
+import jwt  from "jsonwebtoken";
 import bcrypt from "bcrypt"
 
 const userSchema = new Schema({
@@ -34,7 +34,7 @@ const userSchema = new Schema({
     watchHistory:[
         {
             type: Schema.Types.ObjectId,
-            req:"Video"
+            ref:"Video"
         }
     ],
     password:{
@@ -53,7 +53,7 @@ userSchema.pre("save",  async function (next){
     // Check if the password field has been modified
     if(!this.isModified("password")) return next();
 
-    this.password = bcrypt.hash(this.password, 10)
+    this.password = await bcrypt.hash(this.password, 10)
     next()
 })
 
@@ -64,7 +64,7 @@ userSchema.methods.isPasswordCorrect = async function (password){
 }
 
 userSchema.methods.genrateAccessToken = function (){
-    jwt.sign(
+    return jwt.sign(
         {
             _id: this._id,
             email:this.email,
@@ -73,19 +73,19 @@ userSchema.methods.genrateAccessToken = function (){
         },
         process.env.ACCESS_TOKEN_SECRET,
         {
-            exiresIn:process.env.ACCESS_TOKEN_EXPIRY
+            expiresIn:process.env.ACCESS_TOKEN_EXPIRY
         }
     )
 }
 userSchema.methods.genrateRefreshToken = function (){
-    jwt.sign(
+   return jwt.sign(
         {
             _id: this._id,
           
         },
         process.env.REFRESH_TOKEN_SECRET,
         {
-            exiresIn:process.env.REFRESH_TOKEN_EXPIRY
+            expiresIn:process.env.REFRESH_TOKEN_EXPIRY
         }
     )
 }
