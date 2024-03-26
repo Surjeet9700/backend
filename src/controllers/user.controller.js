@@ -4,6 +4,23 @@ import {User} from "../models/user.model.js"
 import { uploadOnCloudinary } from "../utils/fileUpload.cloudniary.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 
+
+const genrateAccessAndRefreshTokens = async(userId) => {
+     try{
+          const user = await User.findById(userId)
+          const accessToken = user.genrateAccessToken()
+          const refreshToken = user.genrateRefreshToken()
+
+          user.refreshToken = refreshToken
+          await user.save( {validateBeforeSave:save })
+
+          return {accessToken, refreshToken}
+          
+     }catch(error){
+          throw new ApiError(500, "something went wrong while generating refresh and access token")
+     }
+}
+
 const registerUser = asyncHandler(async (req, res) => {
     // Assuming you want to extract these details from the request body
     // Here you would add your logic for:
@@ -89,8 +106,106 @@ const registerUser = asyncHandler(async (req, res) => {
       )
 });
 
+const logicUser = asyncHandler(async (req,res) => {
+     //req body -> data
+     //username or email 
+     //find user
+     //password check
+     //access and refresh token 
+     //send with cookies
+     
+     
+     const {email, username, password} = req.body
+
+     if(!(username || email)) {
+          throw new ApiError(400, "username or password is required")    
+     }
+
+     const user = await User.findOne({
+          $or: [{username}, {email}]
+     })
+
+     if(!user){
+           throw new ApiError(404, "username is not found")
+     }
+
+     const isPasswordVaild = await user.isPasswordCorrect(password)
+
+     if(!isPasswordVaild){
+          throw new ApiError(401, "Invaild user credentials")
+     }
+
+     const {accessToken, refreshToken} = await genrateAccessAndRefreshTokens(user._id)
+
+     const loddedInUser = await User.findById(user._id).
+     select("-password  -refreshToken")
+
+
+     const options = {
+          httpOnly:true,
+          secure:true
+     }
+
+     return res
+     .status(200)
+     .cookie("accessToken", accessToken, options)
+     .cookie("refreshToken", refreshToken, options)
+     .json({
+       data: {
+         user: loggedUser,
+         accessToken: accessToken,
+         refreshToken: refreshToken
+       },
+       message: "User logged in successfully"
+     })
+
+   
+})
+
+const logoutUser = asyncHandler(async (req,res) => {
+         await User.findByIdAndUpdate(
+               req.user._id,
+               {
+                   $set:{
+                      refreshToken:undefined
+                   } 
+               },
+               {
+                    new:true
+               }
+          )
+
+          const options = {
+               httpOnly:true,
+               secure:true
+          }
+     
+          return res
+          .status(200)
+          .clearCookie("accessToken", options)
+          .clearCookie("refreshToken", options)
+          .json(new ApiResponse(200),{},"user logged out successfullly")
+     
+
+})
+
+
+// Login Flow:
+// [Client] --> [Server] : Send login credentials (username/email, password)
+// [Server] --> [Database] : Query user based on username/email
+// [Database] --> [Server] : Retrieve user data
+// [Server] --> [Client] : Send access and refresh tokens as cookies
+// [Client] --> [Server] : Include access and refresh tokens in subsequent requests
+
+// Logout Flow:
+// [Client] --> [Server] : Send logout request
+// [Server] --> [Database] : Update user document to remove refresh token
+// [Server] --> [Client] : Clear access and refresh tokens from cookies
+
 export { 
      registerUser, 
+     logicUser,
+     loggedUser
 };
 
 
