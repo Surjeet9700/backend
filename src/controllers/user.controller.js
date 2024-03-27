@@ -3,19 +3,28 @@ import {ApiError} from "../utils/ApiError.js"
 import {User} from "../models/user.model.js"
 import { uploadOnCloudinary } from "../utils/fileUpload.cloudniary.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
+import jwt from "jsonwebtoken"
 
 
-const genrateAccessAndRefreshTokens = async(userId) => {
+const generateAccessAndRefreshTokens = async (userId) => {
      try{
           const user = await User.findById(userId)
-          const accessToken = user.genrateAccessToken()
-          const refreshToken = user.genrateRefreshToken()
+          if(!user){
+               throw new ApiError(404, "user not found")
+          }
+          const accessToken = user.generateAccessToken()
+          console.log("acessToken: ",accessToken)
+          const refreshToken = user.generateRefreshToken()
+          console.log("refershToken: ",refreshToken)
 
-          user.refreshToken = refreshToken
-          await user.save( {validateBeforeSave:save })
 
-          return {accessToken, refreshToken}
-          
+          const userRefreshToken = user.refreshToken = refreshToken
+          console.log("user.refreshToken", userRefreshToken)
+          const savechanges = await user.save( {validateBeforeSave:false })
+          console.log("saving changes ",savechanges)
+
+          return { accessToken, refreshToken }
+
      }catch(error){
           throw new ApiError(500, "something went wrong while generating refresh and access token")
      }
@@ -106,7 +115,7 @@ const registerUser = asyncHandler(async (req, res) => {
       )
 });
 
-const logicUser = asyncHandler(async (req,res) => {
+const loginUser = asyncHandler(async (req,res) => {
      //req body -> data
      //username or email 
      //find user
@@ -135,8 +144,8 @@ const logicUser = asyncHandler(async (req,res) => {
           throw new ApiError(401, "Invaild user credentials")
      }
 
-     const {accessToken, refreshToken} = await genrateAccessAndRefreshTokens(user._id)
-
+     console.log(user._id)
+     const {accessToken, refreshToken} = await generateAccessAndRefreshTokens(user._id)
      const loddedInUser = await User.findById(user._id).
      select("-password  -refreshToken")
 
@@ -152,7 +161,7 @@ const logicUser = asyncHandler(async (req,res) => {
      .cookie("refreshToken", refreshToken, options)
      .json({
        data: {
-         user: loggedUser,
+         user: loddedInUser,
          accessToken: accessToken,
          refreshToken: refreshToken
        },
@@ -190,6 +199,50 @@ const logoutUser = asyncHandler(async (req,res) => {
 })
 
 
+const refershAccessToken = asyncHandler(async (req,res) =>{
+     const incomingRefreshToken = req.cookie.refreshToken || req.body.refreshToken
+
+     if(!incomingRefreshToken) {
+          throw new ApiError(401, "unauthorized Request")
+     }
+
+    try {
+      const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
+ 
+      const user = await User.findById(decodedToken?._id)
+ 
+      if(!user){
+           throw new ApiError(401, "Invalid refresh token")
+      }
+ 
+      if(incomingRefreshToken !== user?.refreshToken){
+           throw new ApiError(401, "refresh token is expired or used")
+ 
+      }
+ 
+      const options = {
+           httpOnly:true,
+           secure:true
+      }
+      const {accessToken, newrefreshToken} =  await generateAccessAndRefreshTokens(user._id)
+ 
+      return res
+      .status(200)
+      .cookie("accessToken", accessToken,options)
+      .cookie("refreshToken", newrefreshToken,options)
+      .json(
+           new ApiResponse(
+                200,
+                {accessToken, refreshToken:newrefreshToken},
+                "access token refreshed"
+           )
+      )
+    } catch (error) {
+          throw ApiError(401,error?.message ||
+               "invalid refresh token")
+    }
+})
+
 // Login Flow:
 // [Client] --> [Server] : Send login credentials (username/email, password)
 // [Server] --> [Database] : Query user based on username/email
@@ -204,8 +257,9 @@ const logoutUser = asyncHandler(async (req,res) => {
 
 export { 
      registerUser, 
-     logicUser,
-     loggedUser
+     loginUser,
+     logoutUser,
+     refershAccessToken
 };
 
 
